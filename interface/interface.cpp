@@ -1,11 +1,12 @@
 #include "interface.hpp"
 
-Device::Device(const char* name, int maxinchannel,  int maxoutchannel, double samplerate, int framesPerBuffer) {
+Device::Device(const char* name, int maxinchannel,  int maxoutchannel, double samplerate, int framesPerBuffer, int usingoutchannels) {
     this->name = name;
     this->maxinchannels = maxinchannel;
     this->maxoutchannels = maxoutchannel;
     this->samplerate = samplerate;
     this->framesPerBuffer = framesPerBuffer;
+    this->usingoutchannels = usingoutchannels;
 }
 
 Device::Device() {}
@@ -46,7 +47,7 @@ void Interface::enumerate() {
     int numdevices = Pa_GetDeviceCount();
     for(int i=0; i<numdevices; i++) {
         const PaDeviceInfo* deviceinfo = Pa_GetDeviceInfo(i);
-        this->devices.push_back(new Device(deviceinfo->name, deviceinfo->maxInputChannels, deviceinfo->maxOutputChannels, this->sample_rate, this->fpb));
+        this->devices.push_back(new Device(deviceinfo->name, deviceinfo->maxInputChannels, deviceinfo->maxOutputChannels, this->sample_rate, this->fpb, 0));
     }
 }
 
@@ -72,13 +73,14 @@ void Interface::openStream(int index) {
     this->useddevice = *(this->devices[index]);
 
     inputparams.device = index;
-    inputparams.channelCount = 2;
+    inputparams.channelCount = devices[index]->maxinchannels;
     inputparams.sampleFormat = paFloat32 | paNonInterleaved;
     inputparams.suggestedLatency = Pa_GetDeviceInfo(index)->defaultLowInputLatency;
     inputparams.hostApiSpecificStreamInfo = NULL;
 
     outputparams.device = index;
-    outputparams.channelCount = 2;
+    outputparams.channelCount = (devices[index]->maxoutchannels > 1) ? 2 : 1;
+    devices[index]->usingoutchannels = outputparams.channelCount;
     outputparams.sampleFormat = paFloat32 | paNonInterleaved;
     outputparams.suggestedLatency = Pa_GetDeviceInfo(index)->defaultLowOutputLatency;
     outputparams.hostApiSpecificStreamInfo = NULL;   

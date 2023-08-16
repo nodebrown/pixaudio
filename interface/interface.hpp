@@ -13,11 +13,12 @@ class Device {
 public:
     int maxinchannels;
     int maxoutchannels;
+    int usingoutchannels;
     double samplerate;
     int framesPerBuffer;
     const char* name;
     Device();
-    Device(const char* name, int maxinchannel,  int maxoutchannel, double samplerate, int framesPerBuffer);
+    Device(const char* name, int maxinchannel,  int maxoutchannel, double samplerate, int framesPerBuffer, int usingoutchannels);
 };
 
 typedef std::vector<Device*> devices_list;
