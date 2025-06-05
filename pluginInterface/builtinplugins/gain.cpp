@@ -42,17 +42,17 @@ public:
         }
     }
 
-    bool initialize(int bufferSize, int channelSize) override{
+    bool initialize(int bufferSize, int channelSize, int inIndex, int outIndex) override{
         this->bufferSize = bufferSize;
         this->channelSize = channelSize;
+        this->inIndex = inIndex;
+        this->outIndex = outIndex;
         return true;
     }
 
     void process(float** input, float**output) override{
-        for(int i=0; i<channelSize; i++) {
-            for(int j=0; j<bufferSize; j++) {
-                output[i][j] = input[i][j] * gain;
-            }
+        for (int j = 0; j < bufferSize; j++) {
+            output[outIndex][j] = input[inIndex][j] * gain;
         }
     }
 

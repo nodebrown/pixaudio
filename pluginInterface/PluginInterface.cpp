@@ -1,6 +1,6 @@
 #include "PluginInterface.hpp"
 
-int PluginInterface::loadPlugin(char *fileName)
+int PluginInterface::loadPlugin(const char *fileName, int bufferSize, int channelSize, int inIndex, int outIndex)
 {
     void* handle = dlopen(fileName, RTLD_NOW);
     if(!handle) {
@@ -25,9 +25,15 @@ int PluginInterface::loadPlugin(char *fileName)
         std::cout<<"Plugin loaded from file: "<<fileName<<std::endl;
     }
 
-    plugins.push_back(obj);
-    pluginHandles.push_back(handle);
-    return 0;
+    bool initialized = obj->initialize(bufferSize, channelSize, inIndex, outIndex);
+
+    if(initialized && obj->isInitialized()) {
+        plugins.push_back(obj);
+        pluginHandles.push_back(handle);
+        return 0;
+    }
+
+    return -3;
 }
 
 bool PluginInterface::loadPlugin(int index, char *fileName)

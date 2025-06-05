@@ -13,7 +13,7 @@ protected:
     std::vector<void*> pluginHandles;
 public:
     PluginInterface() {}
-    int loadPlugin(char* fileName); 
+    int loadPlugin(const char* fileName, int bufferSize, int channelSize, int inIndex, int outIndex); 
     bool loadPlugin(int index, char *fileName);
     int loadPlugin(Plugin* plugin);
     bool removePlugin(int);

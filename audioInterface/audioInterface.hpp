@@ -32,7 +32,6 @@ private:
     long int fpb;
     PaStream *stream;
     void openStream(int index);
-    // void (*callback)(float** input, float** output);
     std::function<void(float**, float**)> callback;
     void enumerate();
     static int errorCheck(PaError error, const char* place);
@@ -44,6 +43,7 @@ public:
     AudioInterface(long int fpb);
     AudioInterface(double sample_rate, long int fpb);
     ~AudioInterface();
+    void setSampleRateAndFPB(double sample_rate, long int fpb);
     std::vector<Device*>* getDevices();
     Device getDetails();
     int openDevice(int index, std::function<void(float**, float**)> callback);

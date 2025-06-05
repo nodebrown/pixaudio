@@ -42,6 +42,12 @@ AudioInterface::~AudioInterface() {
     }
 }
 
+void AudioInterface::setSampleRateAndFPB(double sample_rate, long int fpb)
+{
+    this->sample_rate = sample_rate;
+    this->fpb = fpb;
+}
+
 void AudioInterface::enumerate() {
     errorCheck(Pa_Initialize(), "Initializing");
     int numdevices = Pa_GetDeviceCount();
@@ -61,8 +67,6 @@ Device AudioInterface::getDetails() {
 
 
 int AudioInterface::audioCallback(const void* input, void* output, unsigned long framesPerBuffer, const  PaStreamCallbackTimeInfo* timeInfo,PaStreamCallbackFlags statusFlags, void* userdata) {
-    
-    // ((AudioInterface*) userdata)->callback((float**)input, (float**)output);
     auto* self = static_cast<AudioInterface*>(userdata);
     float** in = (float**)input;
     float** out = (float**)output;
@@ -89,6 +93,9 @@ void AudioInterface::openStream(int index) {
     outputparams.sampleFormat = paFloat32 | paNonInterleaved;
     outputparams.suggestedLatency = Pa_GetDeviceInfo(index)->defaultLowOutputLatency;
     outputparams.hostApiSpecificStreamInfo = NULL;   
+
+    this->useddevice.framesPerBuffer = this->fpb;
+    this->useddevice.samplerate = this->sample_rate;
 
     errorCheck(Pa_OpenStream(&(this->stream), &inputparams, &outputparams, this->sample_rate, this->fpb, paNoFlag, this->audioCallback, (void*)this), "Opening stream");
 }

@@ -1,27 +1,21 @@
 #include "pluginInterface/Plugin/Plugin.hpp"
 #include <vector>
+#include "BiQuadFilter.hpp"
 
-class DelayPlugin : public Plugin {
-enum PARAMETER_INDICES {
-    FEEDBACK,
-    TIME,
-    WETNESS_PARAM
-};
+class EQPlugin : public Plugin {
+
 private:
-    int bufferSize;
-    int channelSize;
-    int delaySamples;
-    float feedback;
-    std::vector<float> delayBuffer;
-    int writeIndex;
-    int readIndex;
     std::vector<PluginParameter*> parameters;
     PluginMetaData* pluginMetaData;
-    float wetness;
+    int channelSize;
+    int bufferSize;
+    BiquadFilter* lb;
+    BiquadFilter* mb;
+    BiquadFilter* hb;
+    float gain;
 
 public:
-    DelayPlugin(int delaySamples = 48000, float feedback = 0.3f);
-
+    EQPlugin();
     bool initialize(int bufferSize, int channelSize, int inIndex, int outIndex) override;
     void process(float** input, float** output) override;
     PluginMetaData* const getMetaData() override;

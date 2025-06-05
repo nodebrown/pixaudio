@@ -1,27 +1,24 @@
 #include "pluginInterface/Plugin/Plugin.hpp"
 #include <vector>
+#include "Diffuser.cpp"
+#include "FeedBackDelay.cpp"
 
-class DelayPlugin : public Plugin {
-enum PARAMETER_INDICES {
-    FEEDBACK,
-    TIME,
-    WETNESS_PARAM
-};
+class ReverbPlugin : public Plugin {
+
 private:
     int bufferSize;
-    int channelSize;
-    int delaySamples;
-    float feedback;
-    std::vector<float> delayBuffer;
-    int writeIndex;
-    int readIndex;
     std::vector<PluginParameter*> parameters;
     PluginMetaData* pluginMetaData;
+    int channelSize;
+    std::vector<float> splitted;
+    std::vector<Diffuser*> diffusers;
+    FeedBackDelay* feedBackDelay;
+    Mixer* mixer;
+
     float wetness;
 
 public:
-    DelayPlugin(int delaySamples = 48000, float feedback = 0.3f);
-
+    ReverbPlugin(int bufferSize);
     bool initialize(int bufferSize, int channelSize, int inIndex, int outIndex) override;
     void process(float** input, float** output) override;
     PluginMetaData* const getMetaData() override;
