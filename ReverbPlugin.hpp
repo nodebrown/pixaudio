@@ -1,24 +1,39 @@
+#pragma once
 #include "pluginInterface/Plugin/Plugin.hpp"
 #include <vector>
-#include "Diffuser.cpp"
-#include "FeedBackDelay.cpp"
 
 class ReverbPlugin : public Plugin {
+    enum PARAMETER_INDICES {
+        ROOM_SIZE,
+        DAMPING,
+        WETNESS_PARAM
+    };
 
 private:
     int bufferSize;
-    std::vector<PluginParameter*> parameters;
-    PluginMetaData* pluginMetaData;
     int channelSize;
-    std::vector<float> splitted;
-    std::vector<Diffuser*> diffusers;
-    FeedBackDelay* feedBackDelay;
-    Mixer* mixer;
 
+    // Comb filter buffers
+    std::vector<std::vector<std::vector<float>>> combBuffers; 
+    std::vector<int> combIndices;
+
+    // All-pass filter buffers
+    std::vector<std::vector<std::vector<float>>> allpassBuffers; 
+    std::vector<int> allpassIndices;
+
+    std::vector<int> combDelays;
+    std::vector<int> allpassDelays;
+
+    float roomSize;
+    float damping;
     float wetness;
 
+    std::vector<PluginParameter*> parameters;
+    PluginMetaData* pluginMetaData;
+
 public:
-    ReverbPlugin(int bufferSize);
+    ReverbPlugin(float roomSize = 0.5f, float damping = 0.3f, float wetness = 0.3f);
+
     bool initialize(int bufferSize, int channelSize, int inIndex, int outIndex) override;
     void process(float** input, float** output) override;
     PluginMetaData* const getMetaData() override;

@@ -1,111 +1,134 @@
 #include "ReverbPlugin.hpp"
 #include <iostream>
+#include <cmath>
 
+ReverbPlugin::ReverbPlugin(float roomSize, float damping, float wetness)
+    : roomSize(roomSize), damping(damping), wetness(wetness) 
+{
+    // Parameters
+    PluginParameter* roomParam = new PluginParameter();
+    roomParam->current = roomSize;
+    roomParam->start = 0.0;
+    roomParam->end = 1.0;
+    roomParam->name = "Room Size";
+    parameters.push_back(roomParam);
 
-#define DIFFUSER_COUNT 8
-#define INTERNAL_CHANNEL_COUNT 8
+    PluginParameter* dampingParam = new PluginParameter();
+    dampingParam->current = damping;
+    dampingParam->start = 0.0;
+    dampingParam->end = 1.0;
+    dampingParam->name = "Damping";
+    parameters.push_back(dampingParam);
 
-enum CONTROLS {
-    WETNESS_PARAM = 0
-};
+    PluginParameter* wetnessParam = new PluginParameter();
+    wetnessParam->current = wetness;
+    wetnessParam->start = 0.0;
+    wetnessParam->end = 1.0;
+    wetnessParam->name = "Wetness";
+    parameters.push_back(wetnessParam);
 
-ReverbPlugin::ReverbPlugin(int bufferSize)
-    :
-      bufferSize(bufferSize)
-       {
+    // Metadata
+    pluginMetaData = new PluginMetaData();
+    pluginMetaData->author = "Arjun B";
+    pluginMetaData->category = "Reverb";
+    pluginMetaData->name = "SimpleReverb";
+    pluginMetaData->email = "arjunbchennithala@gmail.com";
 
-        pluginMetaData = new PluginMetaData();
-        pluginMetaData->author = "Arjun B";
-        pluginMetaData->category = "Basic";
-        pluginMetaData->name = "AReverb";
-        pluginMetaData->email = "arjunbchennithala@gmail.com";
-        initialized = false;
-        active = true;
-        wetness = 0.4;
-
-
-        PluginParameter* wetnessParameter = new PluginParameter();
-        wetnessParameter->name = "Wetness";
-        wetnessParameter->description = "This plugin sets the wetness";
-        wetnessParameter->start = 0.0;
-        wetnessParameter->end = 1.0;
-        wetnessParameter->current = 0.4;
-
-        parameters.push_back(wetnessParameter);
+    active = true;
 }
 
 bool ReverbPlugin::initialize(int bufferSize, int channelSize, int inIndex, int outIndex) {
     this->bufferSize = bufferSize;
     this->channelSize = channelSize;
     this->inIndex = inIndex;
-    this->outIndex = -1;
-    for(int i=0; i<DIFFUSER_COUNT; i++) {
-        Diffuser* diffuser = new Diffuser(INTERNAL_CHANNEL_COUNT,  200);
-        diffusers.push_back(diffuser);
+    this->outIndex = outIndex;
+
+    // Example comb & all-pass delay times (samples)
+    combDelays = {1116, 1188, 1277, 1356};
+    allpassDelays = {556, 441};
+
+    combBuffers.resize(channelSize);
+    combIndices.resize(combDelays.size(), 0);
+    for (int ch = 0; ch < channelSize; ch++) {
+        combBuffers[ch].resize(combDelays.size());
+        for (size_t i = 0; i < combDelays.size(); i++) {
+            combBuffers[ch][i].assign(combDelays[i], 0.0f);
+        }
     }
-    splitted.resize(INTERNAL_CHANNEL_COUNT, 0.0f);
-    std::vector<int> delayTimes = {4799, 5039, 5227, 5471, 5527, 5749, 5801, 6037};
-    // std::vector<int> delayTimes = {5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000};
-    feedBackDelay = new FeedBackDelay(48000, delayTimes, INTERNAL_CHANNEL_COUNT);
-    std::cout<<"Initialization of reverb complete"<<std::endl;
+
+    allpassBuffers.resize(channelSize);
+    allpassIndices.resize(allpassDelays.size(), 0);
+    for (int ch = 0; ch < channelSize; ch++) {
+        allpassBuffers[ch].resize(allpassDelays.size());
+        for (size_t i = 0; i < allpassDelays.size(); i++) {
+            allpassBuffers[ch][i].assign(allpassDelays[i], 0.0f);
+        }
+    }
+
+    std::cout << "Initialized reverb plugin" << std::endl;
     initialized = true;
     return true;
 }
 
-void mixDownToStero(std::vector<float> input, float& chL, float& chR) {
-    float panning[] = {-1.0, -0.7, -0.4, -0.1, 0.1, 0.4, 0.7, 1.0};
-    chL = 0.0f;
-    chR = 0.0f;
-
-    for(int i=0; i<8; i++) {
-        float angle = (panning[i] + 1.0f) * 0.25f * M_PI;
-        float gainL = sinf(angle);
-        float gainR = cosf(angle);
-
-        chL += gainL * input[i];
-        chR += gainR * input[i];
-    }
-
-    float norm = 1.0 / sqrt(8.0f);
-    
-    chL *= norm;
-    chR *= norm;
-}
-
-
-float combine(std::vector<float>& inputs) {
-    float sum = 0.0f;
-    for(int i=0; i<inputs.size(); i++) {
-        sum += inputs.at(i);
-    }   
-    float avg = sum / static_cast<float>(inputs.size());
-    return avg;
-}
-
 void ReverbPlugin::process(float** input, float** output) {
-    for (int i = 0; i < bufferSize; ++i) {
-        for(int j=0; j<splitted.size(); j++) {
-            splitted.at(j) =  input[inIndex][i];   
+    for (int i = 0; i < bufferSize; i++) {
+        float inL = 0.0f, inR = 0.0f;
+        switch (inIndex) {
+            case ChannelConfiguration::CH0: inL = input[0][i]; inR = inL; break;
+            case ChannelConfiguration::CH1: inR = input[1][i]; inL = inR; break;
+            case ChannelConfiguration::ALL: inL = input[0][i]; inR = input[1][i]; break;
         }
-        for(Diffuser* diffuser: diffusers) {
-            diffuser->process(splitted);
+
+        // Process per channel
+        float wetL = 0.0f, wetR = 0.0f;
+        for (int ch = 0; ch < channelSize; ch++) {
+            float inp = (ch == 0 ? inL : inR);
+            float combOut = 0.0f;
+
+            // Comb filters
+            for (size_t c = 0; c < combDelays.size(); c++) {
+                auto& buf = combBuffers[ch][c];
+                int& idx = combIndices[c];
+                float y = buf[idx];
+                buf[idx] = inp + (y * (roomSize * 0.9f));
+                combOut += y;
+                idx = (idx + 1) % combDelays[c];
+            }
+
+            // All-pass filters
+            float allpassOut = combOut;
+            for (size_t a = 0; a < allpassDelays.size(); a++) {
+                auto& buf = allpassBuffers[ch][a];
+                int& idx = allpassIndices[a];
+                float bufOut = buf[idx];
+                float inputVal = allpassOut;
+                buf[idx] = inputVal + bufOut * 0.5f;
+                allpassOut = bufOut - inputVal * 0.5f;
+                idx = (idx + 1) % allpassDelays[a];
+            }
+
+            if (ch == 0) wetL = allpassOut;
+            else wetR = allpassOut;
         }
 
-        feedBackDelay->process(splitted);
-
-        float sampL;
-        float sampR;
-
-
-        mixDownToStero(splitted, sampL, sampR);
-
-        output[0][i] = sampL;
-        output[1][i] = sampR;
+        // Mix dry/wet
+        switch (outIndex) {
+            case ChannelConfiguration::CH0:
+                output[0][i] = wetL * wetness + inL * (1.0f - wetness);
+                break;
+            case ChannelConfiguration::CH1:
+                output[1][i] = wetR * wetness + inR * (1.0f - wetness);
+                break;
+            case ChannelConfiguration::ALL:
+                output[0][i] = wetL * wetness + inL * (1.0f - wetness);
+                output[1][i] = wetR * wetness + inR * (1.0f - wetness);
+                break;
+        }
     }
 }
 
 PluginMetaData* const ReverbPlugin::getMetaData() {
-    return pluginMetaData; 
+    return pluginMetaData;
 }
 
 std::vector<PluginParameter*>* const ReverbPlugin::getParameters() {
@@ -113,21 +136,17 @@ std::vector<PluginParameter*>* const ReverbPlugin::getParameters() {
 }
 
 bool ReverbPlugin::setParameter(int index, float value) {
-    PluginParameter *parameter = parameters.at(index);
-    if(!(value >= parameter->start && value <= parameter->end)) {
-        return false;
-    }
+    PluginParameter* parameter = parameters.at(index);
+    if (!(value >= parameter->start && value <= parameter->end)) return false;
     parameter->current = value;
     switch (index) {
-        case WETNESS_PARAM:
-            wetness = value;
-        default:
-            break;
+        case ROOM_SIZE: roomSize = value; break;
+        case DAMPING: damping = value; break;
+        case WETNESS_PARAM: wetness = value; break;
     }
-    return true; 
+    return true;
 }
 
-
 extern "C" Plugin* create_object() {
-    return new ReverbPlugin(256);
+    return new ReverbPlugin();
 }
