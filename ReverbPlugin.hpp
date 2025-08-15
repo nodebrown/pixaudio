@@ -1,38 +1,56 @@
-#pragma once
 #include "pluginInterface/Plugin/Plugin.hpp"
 #include <vector>
 
 class ReverbPlugin : public Plugin {
     enum PARAMETER_INDICES {
-        ROOM_SIZE,
-        DAMPING,
+        DECAY_PARAM,
+        PREDELAY_PARAM,
         WETNESS_PARAM
     };
 
 private:
     int bufferSize;
-    int channelSize;
-
-    // Comb filter buffers
-    std::vector<std::vector<std::vector<float>>> combBuffers; 
-    std::vector<int> combIndices;
-
-    // All-pass filter buffers
-    std::vector<std::vector<std::vector<float>>> allpassBuffers; 
-    std::vector<int> allpassIndices;
-
-    std::vector<int> combDelays;
-    std::vector<int> allpassDelays;
-
-    float roomSize;
-    float damping;
+    float decay;
     float wetness;
+    int predelaySamples;
+
+    struct CombFilter {
+        std::vector<float> buffer;
+        int index = 0;
+        float feedback = 0.7f;
+        float process(float input) {
+            float output = buffer[index];
+            buffer[index] = input + output * feedback;
+            index = (index + 1) % buffer.size();
+            return output;
+        }
+    };
+
+    struct AllpassFilter {
+        std::vector<float> buffer;
+        int index = 0;
+        float feedback = 0.5f;
+        float process(float input) {
+            float bufout = buffer[index];
+            float output = -input + bufout;
+            buffer[index] = input + bufout * feedback;
+            index = (index + 1) % buffer.size();
+            return output;
+        }
+    };
+
+    std::vector<CombFilter> combsL;
+    std::vector<CombFilter> combsR;
+    std::vector<AllpassFilter> allpassesL;
+    std::vector<AllpassFilter> allpassesR;
+    std::vector<float> predelayBuffer;
+    int predelayIndex;
 
     std::vector<PluginParameter*> parameters;
     PluginMetaData* pluginMetaData;
 
 public:
-    ReverbPlugin(float roomSize = 0.5f, float damping = 0.3f, float wetness = 0.3f);
+    ReverbPlugin();
 
     bool initialize(int bufferSize, int channelSize, int inIndex, int outIndex) override;
     void process(float** input, float** output) override;

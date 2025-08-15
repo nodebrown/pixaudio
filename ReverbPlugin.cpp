@@ -1,31 +1,30 @@
 #include "ReverbPlugin.hpp"
 #include <iostream>
-#include <cmath>
 
-ReverbPlugin::ReverbPlugin(float roomSize, float damping, float wetness)
-    : roomSize(roomSize), damping(damping), wetness(wetness) 
+ReverbPlugin::ReverbPlugin()
+    : decay(0.7f), wetness(0.4f), predelaySamples(0)
 {
     // Parameters
-    PluginParameter* roomParam = new PluginParameter();
-    roomParam->current = roomSize;
-    roomParam->start = 0.0;
-    roomParam->end = 1.0;
-    roomParam->name = "Room Size";
-    parameters.push_back(roomParam);
+    auto decayParam = new PluginParameter();
+    decayParam->current = decay;
+    decayParam->start = 0.0f;
+    decayParam->end = 0.99f;
+    decayParam->name = "Decay";
+    parameters.push_back(decayParam);
 
-    PluginParameter* dampingParam = new PluginParameter();
-    dampingParam->current = damping;
-    dampingParam->start = 0.0;
-    dampingParam->end = 1.0;
-    dampingParam->name = "Damping";
-    parameters.push_back(dampingParam);
+    auto predelayParam = new PluginParameter();
+    predelayParam->current = 0;
+    predelayParam->start = 0;
+    predelayParam->end = 2000; // samples
+    predelayParam->name = "PreDelay";
+    parameters.push_back(predelayParam);
 
-    PluginParameter* wetnessParam = new PluginParameter();
-    wetnessParam->current = wetness;
-    wetnessParam->start = 0.0;
-    wetnessParam->end = 1.0;
-    wetnessParam->name = "Wetness";
-    parameters.push_back(wetnessParam);
+    auto wetParam = new PluginParameter();
+    wetParam->current = wetness;
+    wetParam->start = 0.0f;
+    wetParam->end = 1.0f;
+    wetParam->name = "Wetness";
+    parameters.push_back(wetParam);
 
     // Metadata
     pluginMetaData = new PluginMetaData();
@@ -39,91 +38,103 @@ ReverbPlugin::ReverbPlugin(float roomSize, float damping, float wetness)
 
 bool ReverbPlugin::initialize(int bufferSize, int channelSize, int inIndex, int outIndex) {
     this->bufferSize = bufferSize;
-    this->channelSize = channelSize;
     this->inIndex = inIndex;
     this->outIndex = outIndex;
 
-    // Example comb & all-pass delay times (samples)
-    combDelays = {1116, 1188, 1277, 1356};
-    allpassDelays = {556, 441};
+    predelayBuffer.assign(parameters[1]->end, 0.0f);
+    predelayIndex = 0;
 
-    combBuffers.resize(channelSize);
-    combIndices.resize(combDelays.size(), 0);
-    for (int ch = 0; ch < channelSize; ch++) {
-        combBuffers[ch].resize(combDelays.size());
-        for (size_t i = 0; i < combDelays.size(); i++) {
-            combBuffers[ch][i].assign(combDelays[i], 0.0f);
-        }
+
+    // Example comb filter lengths (prime numbers for smoother response)
+    int combLengthsL[] = {1116, 1188, 1277, 1356};
+    int combLengthsR[] = {1139, 1211, 1300, 1379};
+
+    combsL.clear();
+    combsR.clear();
+    for (int len : combLengthsL) {
+        CombFilter c;
+        c.buffer.assign(len, 0.0f);
+        c.feedback = decay;
+        combsL.push_back(c);
+    }
+    for (int len : combLengthsR) {
+        CombFilter c;
+        c.buffer.assign(len, 0.0f);
+        c.feedback = decay;
+        combsR.push_back(c);
     }
 
-    allpassBuffers.resize(channelSize);
-    allpassIndices.resize(allpassDelays.size(), 0);
-    for (int ch = 0; ch < channelSize; ch++) {
-        allpassBuffers[ch].resize(allpassDelays.size());
-        for (size_t i = 0; i < allpassDelays.size(); i++) {
-            allpassBuffers[ch][i].assign(allpassDelays[i], 0.0f);
-        }
+    // Example allpass filter lengths
+    int allpassLengths[] = {556, 441, 341};
+    allpassesL.clear();
+    allpassesR.clear();
+    for (int len : allpassLengths) {
+        AllpassFilter a;
+        a.buffer.assign(len, 0.0f);
+        allpassesL.push_back(a);
+        allpassesR.push_back(a);
     }
 
-    std::cout << "Initialized reverb plugin" << std::endl;
     initialized = true;
     return true;
 }
 
 void ReverbPlugin::process(float** input, float** output) {
-    for (int i = 0; i < bufferSize; i++) {
-        float inL = 0.0f, inR = 0.0f;
-        switch (inIndex) {
-            case ChannelConfiguration::CH0: inL = input[0][i]; inR = inL; break;
-            case ChannelConfiguration::CH1: inR = input[1][i]; inL = inR; break;
-            case ChannelConfiguration::ALL: inL = input[0][i]; inR = input[1][i]; break;
+    for (int i = 0; i < bufferSize; ++i) {
+        float inSample = 0.0f;
+        switch(inIndex) {
+            case ChannelConfiguration::CH0:
+                inSample = input[0][i];
+                break;
+            case ChannelConfiguration::CH1:
+                inSample = input[1][i];
+                break;
+            case ChannelConfiguration::ALL:
+                inSample = input[0][i] + input[1][i];
+                inSample = inSample / 2;
+                break;
         }
 
-        // Process per channel
-        float wetL = 0.0f, wetR = 0.0f;
-        for (int ch = 0; ch < channelSize; ch++) {
-            float inp = (ch == 0 ? inL : inR);
-            float combOut = 0.0f;
 
-            // Comb filters
-            for (size_t c = 0; c < combDelays.size(); c++) {
-                auto& buf = combBuffers[ch][c];
-                int& idx = combIndices[c];
-                float y = buf[idx];
-                buf[idx] = inp + (y * (roomSize * 0.9f));
-                combOut += y;
-                idx = (idx + 1) % combDelays[c];
-            }
+        predelayBuffer[predelayIndex] = inSample;
 
-            // All-pass filters
-            float allpassOut = combOut;
-            for (size_t a = 0; a < allpassDelays.size(); a++) {
-                auto& buf = allpassBuffers[ch][a];
-                int& idx = allpassIndices[a];
-                float bufOut = buf[idx];
-                float inputVal = allpassOut;
-                buf[idx] = inputVal + bufOut * 0.5f;
-                allpassOut = bufOut - inputVal * 0.5f;
-                idx = (idx + 1) % allpassDelays[a];
-            }
+        // Read delayed signal
+        float delayedInput = predelayBuffer[(predelayIndex - predelaySamples + 2000) % 2000];
 
-            if (ch == 0) wetL = allpassOut;
-            else wetR = allpassOut;
+        // Advance index
+        predelayIndex = (predelayIndex + 1) % 2000;
+
+        inSample = delayedInput;
+
+        // Process comb filters
+        float outL = 0.0f;
+        float outR = 0.0f;
+        for (auto& c : combsL) outL += c.process(inSample);
+        for (auto& c : combsR) outR += c.process(inSample);
+
+        // Normalize
+        outL /= combsL.size();
+        outR /= combsR.size();
+
+        // Process allpass filters
+        for (auto& a : allpassesL) outL = a.process(outL);
+        for (auto& a : allpassesR) outR = a.process(outR);
+
+        switch (outIndex) {
+            case ChannelConfiguration::CH0:
+                output[0][i] = wetness * outL + (1.0f - wetness) * inSample;
+                break;
+            case ChannelConfiguration::CH1:
+                output[1][i] = wetness * outR + (1.0f - wetness) * inSample;
+                break;
+            case ChannelConfiguration::ALL:
+                output[0][i] = wetness * outL + (1.0f - wetness) * inSample;
+                output[1][i] = wetness * outR + (1.0f - wetness) * inSample;
+                break;
         }
 
         // Mix dry/wet
-        switch (outIndex) {
-            case ChannelConfiguration::CH0:
-                output[0][i] = wetL * wetness + inL * (1.0f - wetness);
-                break;
-            case ChannelConfiguration::CH1:
-                output[1][i] = wetR * wetness + inR * (1.0f - wetness);
-                break;
-            case ChannelConfiguration::ALL:
-                output[0][i] = wetL * wetness + inL * (1.0f - wetness);
-                output[1][i] = wetR * wetness + inR * (1.0f - wetness);
-                break;
-        }
+    
     }
 }
 
@@ -136,13 +147,22 @@ std::vector<PluginParameter*>* const ReverbPlugin::getParameters() {
 }
 
 bool ReverbPlugin::setParameter(int index, float value) {
-    PluginParameter* parameter = parameters.at(index);
-    if (!(value >= parameter->start && value <= parameter->end)) return false;
-    parameter->current = value;
+    auto param = parameters.at(index);
+    if (!(value >= param->start && value <= param->end)) return false;
+
+    param->current = value;
     switch (index) {
-        case ROOM_SIZE: roomSize = value; break;
-        case DAMPING: damping = value; break;
-        case WETNESS_PARAM: wetness = value; break;
+        case DECAY_PARAM:
+            decay = value;
+            for (auto& c : combsL) c.feedback = decay;
+            for (auto& c : combsR) c.feedback = decay;
+            break;
+        case PREDELAY_PARAM:
+            predelaySamples = (int)value;
+            break;
+        case WETNESS_PARAM:
+            wetness = value;
+            break;
     }
     return true;
 }
