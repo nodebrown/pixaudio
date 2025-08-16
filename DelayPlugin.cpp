@@ -37,6 +37,7 @@ DelayPlugin::DelayPlugin(int delaySamples, float feedback)
         parameters.push_back(wetnessParam);
 
         active = true;
+        wetness = 0.4;
 
 }
 
@@ -46,11 +47,18 @@ bool DelayPlugin::initialize(int bufferSize, int channelSize, int inIndex, int o
     this->inIndex = inIndex;
     this->outIndex = outIndex;
 
-    delayBuffer.resize(delaySamples, 0.0f);
+    delayBuffer.resize(channelSize);
+    for(int i=0; i<channelSize; i++) {
+        delayBuffer[i].resize(delaySamples, 0.0f);
+    }
 
     writeIndex = 20000;
     readIndex = 0;
-
+    std::cout<<"Initialized delay plugin with parameters: "<<std::endl;
+    std::cout<<"Buffer size: "<<bufferSize<<std::endl;
+    std::cout<<"Channelsize: "<<channelSize<<std::endl;
+    std::cout<<"inIndex: "<<inIndex<<std::endl;
+    std::cout<<"outIndex: "<<outIndex<<std::endl;
     initialized = true;
     return true;
 }
@@ -59,12 +67,54 @@ void DelayPlugin::process(float** input, float** output) {
     int tempWriteIndex = writeIndex;
     int tempReadIndex = readIndex;
     for (int i = 0; i < bufferSize; ++i) {
-        float inSample = input[inIndex][i];
-        float delayedSample = delayBuffer[tempReadIndex];
+        float inSample0 = 0.0f;
+        float inSample1 = 0.0f;
 
-        output[outIndex][i] = delayedSample + inSample;
+        switch (inIndex)
+        {
+        case ChannelConfiguration::CH0:
+            inSample0 = input[0][i];
+            inSample1 = inSample0;
+            break;
 
-        delayBuffer[tempWriteIndex] = inSample + delayedSample * parameters[FEEDBACK]->current;
+        case ChannelConfiguration::CH1:
+            inSample1 = input[1][i];
+            inSample0 = inSample1;
+            break;
+
+        case ChannelConfiguration::ALL:
+            inSample0 = input[0][i];
+            inSample1 = input[1][i];
+            break;
+
+        default:
+            break;
+        }
+
+
+        float delayedSample0 = delayBuffer[0][tempReadIndex];
+        float delayedSample1 = delayBuffer[1][tempReadIndex];
+
+        switch (outIndex)
+        {
+        case ChannelConfiguration::CH0:
+            output[0][i] = delayedSample0 * wetness + (1.0 - wetness) * inSample0;
+            break;
+
+        case ChannelConfiguration::CH1:
+            output[1][i] = delayedSample1 * wetness + (1.0 - wetness) * inSample1;
+            break;
+        
+        case ChannelConfiguration::ALL:
+            output[0][i] = delayedSample0 * wetness + (1.0 - wetness) * inSample0;
+            output[1][i] = delayedSample1 * wetness + (1.0 - wetness) * inSample1;
+            break;
+        
+        default:
+            break;
+        }
+        delayBuffer[0][tempWriteIndex] = inSample0 + delayedSample0 * parameters[FEEDBACK]->current;
+        delayBuffer[1][tempWriteIndex] = inSample1 + delayedSample1 * parameters[FEEDBACK]->current;
         tempWriteIndex = (tempWriteIndex + 1) % delaySamples;
         tempReadIndex = (tempReadIndex + 1) % delaySamples;
     }

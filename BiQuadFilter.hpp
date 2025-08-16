@@ -11,10 +11,8 @@ public:
     }
 
     double process(double x) {
-        // Apply the biquad difference equation
         double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
 
-        // Shift delay line
         x2 = x1;
         x1 = x;
         y2 = y1;
@@ -41,14 +39,27 @@ public:
         return this->gainDB;
     }
 
+    void setQ(double q) {
+        this->Q = q;
+        calculateCoefficients();
+    }
+
+    void setFreq(double freq) {
+        this->f0 = freq;
+        calculateCoefficients();
+    }
+
+    void setGain(double gain) {
+        this->gainDB = gain;
+        calculateCoefficients();
+    }
+
 private:
     FilterType type;
     double fs, f0, Q, gainDB;
 
-    // Filter coefficients
     double b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
 
-    // Delay buffers
     double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
 
     void calculateCoefficients() {

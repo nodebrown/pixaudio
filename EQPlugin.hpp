@@ -9,10 +9,9 @@ private:
     PluginMetaData* pluginMetaData;
     int channelSize;
     int bufferSize;
-    BiquadFilter* lb;
-    BiquadFilter* mb;
-    BiquadFilter* hb;
+    std::vector<BiquadFilter*> bands; 
     float gain;
+    double frequencyBands[10] = {50, 100, 500, 1000, 2000, 5000, 8000, 10000, 150000, 20000};
 
 public:
     EQPlugin();

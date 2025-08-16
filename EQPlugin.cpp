@@ -1,16 +1,12 @@
 #include "EQPlugin.hpp"
 #include <iostream>
+#include <string.h>
+#include <unistd.h>
 #include <cmath>
 
 
 enum CONTROLS {
     GAIN = 0,
-    LBQ,
-    LBG,
-    MBQ,
-    MBG,
-    HBQ,
-    HBG
 };
 
 EQPlugin::EQPlugin()
@@ -22,6 +18,7 @@ EQPlugin::EQPlugin()
         pluginMetaData->name = "AEQ";
         pluginMetaData->email = "arjunbchennithala@gmail.com";
 
+        char* frequencyBandLabels[] = {"50 Hz", "100 Hz", "500 Hz", "1000 Hz", "2 KHz", "5 KHz", "8 KHz", "10 KHz", "15 KHz", "20 KHz"};
 
         PluginParameter* gainParam = new PluginParameter();
         gainParam->name = "Gain";
@@ -31,69 +28,17 @@ EQPlugin::EQPlugin()
         gainParam->end = 1.0f;
         gainParam->type = SLIDER;
 
-        PluginParameter* lbQ = new PluginParameter();
-        lbQ->name = "Low band Q";
-        lbQ->description = "Sets the Q factor of lower band";
-        lbQ->start = 0.1f;
-        lbQ->current = 1.0f;
-        lbQ->end = 1.0f;
-        lbQ->type = SLIDER;
-
-
-        PluginParameter* lbG = new PluginParameter();
-        lbG->name = "Low band Gain";
-        lbG->description = "Sets the gain of low band";
-        lbG->start = -20.0f;
-        lbG->current = 0.0f;
-        lbG->end = 20.0f;
-        lbG->type = SLIDER;
-
-
-        PluginParameter* mbQ = new PluginParameter();
-        mbQ->name = "Mid band Q";
-        mbQ->description = "Sets the Q factor of mid band";
-        mbQ->start = 0.1f;
-        mbQ->current = 1.0f;
-        mbQ->end = 1.0f;
-        mbQ->type = SLIDER;
-
-
-
-        PluginParameter* mbG = new PluginParameter();
-        mbG->name = "Mid band Gain";
-        mbG->description = "Sets the gain of mid band";
-        mbG->start = -20.0f;
-        mbG->current = 0.0f;
-        mbG->end = 20.0f;
-        mbG->type = SLIDER;
-
-
-
-        PluginParameter* hbQ = new PluginParameter();
-        hbQ->name = "High band Q";
-        hbQ->description = "Sets the Q factor of high band";
-        hbQ->start = 0.1f;
-        hbQ->current = 1.0f;
-        hbQ->end = 1.0f;
-        hbQ->type = SLIDER;
-
-
-
-        PluginParameter* hbG = new PluginParameter();
-        hbG->name = "High band Gain";
-        hbG->description = "Sets the gain of high band";
-        hbG->start = -20.0f;
-        hbG->current = 0.0f;
-        hbG->end = 20.0f;
-        hbG->type = SLIDER;
-
         parameters.push_back(gainParam);
-        parameters.push_back(lbQ);
-        parameters.push_back(lbG);
-        parameters.push_back(mbQ);
-        parameters.push_back(mbG);
-        parameters.push_back(hbQ);
-        parameters.push_back(hbG);
+
+        for(int i=0; i<10; i++) {
+            PluginParameter* param = new PluginParameter();
+            param->name = frequencyBandLabels[i];
+            param->type = SLIDER;
+            param->start = -20.0f;
+            param->end = 20.0f;
+            param->current = 0.0f;
+            parameters.push_back(param);
+        }
 
         initialized = false;
         active = true;
@@ -104,18 +49,13 @@ bool EQPlugin::initialize(int bufferSize, int channelSize, int inIndex, int outI
     this->channelSize = channelSize;
     this->inIndex = inIndex;
     this->outIndex = outIndex;
-
-
-    lb = new BiquadFilter(BiquadFilter::FilterType::Peaking, 48000, 500, 1.0, 0.0);
-
-    mb = new BiquadFilter(BiquadFilter::FilterType::Peaking, 48000, 8000, 1.0, 0.0);
-
-    hb = new BiquadFilter(BiquadFilter::FilterType::Peaking, 48000, 15000, 1.0, 0.0);
-
+    for(int i=0; i<10; i++) {
+        bands.push_back(new BiquadFilter(BiquadFilter::FilterType::Peaking, 48000, 50, 0.8, 0.0));
+        bands[i]->setFreq(frequencyBands[i]);
+    }
 
     gain = 1.0;
 
-    
     std::cout<<"Initialization of Equalizer complete"<<std::endl;
     initialized = true;
     return true;
@@ -123,13 +63,47 @@ bool EQPlugin::initialize(int bufferSize, int channelSize, int inIndex, int outI
 
 void EQPlugin::process(float** input, float** output) {
     for (int i = 0; i < bufferSize; ++i) {
-        float in = input[inIndex][i];
 
-        float out = lb->process(in);
-        out += mb->process(in);
-        out += hb->process(in);
+        float inSample = 0.0f;
 
-        output[outIndex][i] = out * gain;
+        switch (inIndex)
+        {
+        case ChannelConfiguration::CH0:
+            inSample = input[0][i];
+            break;
+
+        case ChannelConfiguration::CH1:
+            inSample = input[1][i];
+            break;
+
+        case ChannelConfiguration::ALL:
+            inSample = input[0][i] + input[1][i];
+            inSample = inSample / 2;
+            break;
+
+        default:
+            break;
+        }
+
+        float out = inSample;
+        for(BiquadFilter* filter: bands) {
+            out = filter->process(out);
+        }
+
+        float outSample = out * gain;
+
+        switch(outIndex) {
+            case ChannelConfiguration::CH0:
+                output[0][i] = outSample;
+                break;
+            case ChannelConfiguration::CH1:
+                output[1][i] = outSample;
+                break;
+            case ChannelConfiguration::ALL:
+                output[0][i] = outSample;
+                output[1][i] = outSample;
+                break;
+        }
     }
 }
 
@@ -151,25 +125,8 @@ bool EQPlugin::setParameter(int index, float value) {
         case GAIN:
             gain = value;
             break;
-        case LBQ:
-            lb->updateParams(value, lb->getgainDB());
-            break;
-        case LBG:
-            lb->updateParams(lb->getQ(), value);
-            break;
-        case MBQ:
-            mb->updateParams(value, mb->getgainDB());
-            break;
-        case MBG:
-            mb->updateParams(mb->getQ(), value);
-            break;
-        case HBQ:
-            hb->updateParams(value, hb->getgainDB());
-            break;
-        case HBG:
-            hb->updateParams(hb->getQ(), value);
-            break;
         default:
+            bands[index-1]->setGain(value);
             break;
     }
     return true; 

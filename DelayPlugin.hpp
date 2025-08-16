@@ -12,7 +12,7 @@ private:
     int channelSize;
     int delaySamples;
     float feedback;
-    std::vector<float> delayBuffer;
+    std::vector<std::vector<float>> delayBuffer;
     int writeIndex;
     int readIndex;
     std::vector<PluginParameter*> parameters;
