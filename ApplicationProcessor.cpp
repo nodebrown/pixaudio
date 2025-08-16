@@ -15,9 +15,17 @@ ApplicationProcessor::~ApplicationProcessor()
 
 void ApplicationProcessor::process(float** input, float** output) 
 {
-    for(int i=0; i<inChannelSize; i++) {
-        for(int j=0; j<framesPerBuffer; j++) {
-            output[i][j] = input[i][j];
+    if(inChannelSize == 1) {
+        for(int i=0; i<outChannelSize; i++) {
+            for(int j=0; j<framesPerBuffer; j++) {
+                output[i][j] = input[0][j];
+            }
+        }
+    } else {
+        for(int i=0; i<inChannelSize; i++) {
+            for(int j=0; j<framesPerBuffer; j++) {
+                output[i][j] = input[i][j];
+            }
         }
     }
 
@@ -34,7 +42,7 @@ void ApplicationProcessor::process(float** input, float** output)
 
 bool ApplicationProcessor::openPlugin(std::string fileName) 
 {
-    int ret =  loadPlugin(fileName.c_str(), framesPerBuffer, inChannelSize, 0, 0);
+    int ret =  loadPlugin(fileName.c_str(), framesPerBuffer, outChannelSize, 0, 0);
     if(ret == 0) {
         std::vector<Plugin*>* availablePlugins = getPlugins();
         if(availablePlugins->size() > 0) {

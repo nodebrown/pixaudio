@@ -12,6 +12,8 @@ private:
     ApplicationProcessor* applicationProcessor;
     wxStaticText* pluginName;
     wxButton* deleteButton;
+    int inIndex;
+    int outIndex;
 public:
     int getIndex() {
         return index;
@@ -42,7 +44,11 @@ public:
         wxChoice *inputChoiceBox = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, 30), *inputChoices);
         inputChoiceBox->Select(0);
         wxChoice *outputChoiceBox = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxSize(100, 30), *outputChoices);
+        inputChoiceBox->Bind(wxEVT_CHOICE, &PluginContainer::OnInputChannelSelected, this);
         outputChoiceBox->Select(0);
+        outputChoiceBox->Bind(wxEVT_CHOICE, &PluginContainer::OnOutputChannelSelected, this);
+        inIndex = 0;
+        outIndex = 0;
         headerSizer->Add(pluginName, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
         headerSizer->AddStretchSpacer();
         headerSizer->Add(inputChoiceBox);
@@ -70,6 +76,18 @@ public:
         evt.SetClientData(this);
         evt.ResumePropagation(1);
         evt.Skip();
+    }
+
+    void OnInputChannelSelected(wxCommandEvent& evt) {
+        int index = evt.GetInt();
+        inIndex = index;
+        this->applicationProcessor->updateIndices(this->index, index, outIndex);
+    }
+
+    void OnOutputChannelSelected(wxCommandEvent &evt) {
+        int index = evt.GetInt();
+        outIndex = index;
+        this->applicationProcessor->updateIndices(this->index, inIndex, index);
     }
 
     void updatePlugin(int paramIndex, float paramValue) {

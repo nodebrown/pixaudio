@@ -12,6 +12,13 @@ enum PARAMETER_CONTROL_TYPE {
     SWITCH
 };
 
+enum ChannelConfiguration {
+    NONE = 0,
+    CH0,
+    CH1,
+    ALL
+};
+
 class Plugin {
 protected:
     bool active;

@@ -61,14 +61,18 @@ MyFrame::MyFrame()
 
     inputChoices = new wxArrayString();
 
+    inputChoices->Add("NONE");
     inputChoices->Add("IN1");
     inputChoices->Add("IN2");
+    inputChoices->Add("ALL");
 
 
     outputChoices = new wxArrayString();
 
+    outputChoices->Add("NONE");
     outputChoices->Add("OUT1");
     outputChoices->Add("OUT2");
+    outputChoices->Add("ALL");
     
     this->SetSize(1000, 1000);
     wxMenu *menuFile = new wxMenu();
@@ -86,6 +90,7 @@ MyFrame::MyFrame()
     devices_list* deviceList = applicationProcessor->getAudioDevices();
 
     for(int i=0; i<deviceList->size(); i++) {
+        std::cout<<"Device name: "<<deviceList[0][i]->name<<"\tInputs: "<<deviceList[0][i]->maxinchannels<<"\tOutputs: "<<deviceList[0][i]->maxoutchannels<<std::endl;
         int id = wxID_HIGHEST + 1 + i;
         deviceMenu->Append(id, deviceList[0][i]->name);
         Bind(wxEVT_MENU, &MyFrame::OnDeviceStart, this, id);
